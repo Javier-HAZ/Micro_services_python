@@ -3,22 +3,22 @@ import os
 import time
 
 import numpy as np
-#import redis
+import redis
 import settings
-from tensorflow.keras.applications import resNet50
+from tensorflow.keras.applications.resnet50 import ResNet50
 from tensorflow.keras.applications.resnet50 import decode_predictions, preprocess_input
 from tensorflow.keras.preprocessing import image
 
 # TODO
 # Connect to Redis and assign to variable `db``
 # Make use of settings.py module to get Redis settings like host, port, etc.
-db = None
+db = redis.Redis(host=settings.REDIS_IP, port=settings.REDIS_PORT, db=settings.REDIS_DB_ID)
 
 # TODO
 # Load your ML model and assign to variable `model`
 # See https://drive.google.com/file/d/1ADuBSE4z2ZVIdn66YDSwxKv-58U7WEOn/view?usp=sharing
 # for more information about how to use this model.
-model = resnet50.ResNet50(include_top=True, weights="imagenet")
+model = ResNet50(include_top=True, weights="imagenet")
 
 def predict(image_name):
     """
@@ -38,15 +38,15 @@ def predict(image_name):
     """
     # TODO
     #loading and preprocessing the image
-    img = image.load_img(image_name, target_size=(224, 224))
+    img = image.load_img(os.path.join(settings.UPLOAD_FOLDER, image_name), target_size=(224, 224))
     x = image.img_to_array(img)
-    x_batch = resnet50.preprocess_input(np.expand_dims(x, axis=0))
+    x_batch = preprocess_input(np.expand_dims(x, axis=0))
 
     #predictions
     preds = model.predict(x_batch)
-    _, class_name, pred_probability = resnet50.decode_predictions(preds, top=1)[0][0]
+    _, class_name, pred_probability = decode_predictions(preds, top=1)[0][0]
   
-    return class_name, pred_probability
+    return class_name, round(pred_probability, 4)
 
 
 def classify_process():
@@ -76,6 +76,16 @@ def classify_process():
         #       code with Redis making use of functions `brpop()` and `set()`.
         # TODO
 
+        q = db.brpop(settings.REDIS_QUEUE)[1]
+        q = json.loads(q.decode('utf-8'))
+        class_name, pred_probability = predict(q['image'])
+        pred = {
+            "prediction":class_name,
+            "score":float(pred_probability)
+        }
+        job_id = q['id']
+        db.set(job_id, json.dumps(pred))
+        
         # Don't forget to sleep for a bit at the end
         time.sleep(settings.SERVER_SLEEP)
 

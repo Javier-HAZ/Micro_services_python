@@ -52,14 +52,19 @@ def index():
             #            service using Redis.
             #   4. Update `context` dict with the corresponding values
             # TODO
-            unique_filename = utils.get_file_hash(file.filename)
+
+            #1
+            unique_filename = utils.get_file_hash(file)
+            #2
             file.save(os.path.join(settings.UPLOAD_FOLDER, unique_filename), exist_ok=True)
-            prediction, score = model_predict(file.filename)
-            contxt = {"prediction":prediction, "score":score, "filename":file.filename}
+            #3
+            prediction, score = model_predict(unique_filename)
+            #4
+            contxt = {"prediction":prediction, "score":score, "filename":unique_filename}
             
             # Update `render_template()` parameters as needed
             # TODO
-            return render_template("index.html", filename=file.filename, context= contxt )
+            return render_template("index.html", filename=unique_filename, context= contxt )
             
         # File received and but it isn't an image
         else:
@@ -113,14 +118,24 @@ def predict():
     rpse = {"success": False, "prediction": None, "score": None}
     file = request.files["file"]
 
-    if utils.allowed_file(file.filename):
-        file.save(os.path.join(settings.UPLOAD_FOLDER, file.filename), exist_ok=True)
-        prediction, score = model_predict(file.filename)
-        rpse.update({"success":True, "prediction":prediction, "score":score})     
-        return Response(jsonify(rpse))
+    # check for file
+    if ("file" not in request.files) or (file.filename == ""):
+        return rpse, 400
+
+    if file and utils.allowed_file(file.filename):
+        #1 Get unique file name
+        unique_name = utils.get_file_hash(file)
+        #2 store the image to disk using new name
+        file.save(os.path.join(settings.UPLOAD_FOLDER, unique_name), exist_ok=True)
+        #3 get predictions from the model
+        prediction, score = model_predict(unique_name)
+        #4 Update contxt
+        rpse.update({"success":True, "prediction":prediction, "score":score})  
+
+        return jsonify(rpse)
 
     else:
-        return Response(jsonify(rpse), status = 400)
+        return jsonify(rpse)
         
     
 @router.route("/feedback", methods=["GET", "POST"])
@@ -144,14 +159,20 @@ def feedback():
           incorrect.
         - "score" model confidence score for the predicted class as float.
     """
-    report = request.form.get("report")
+    if request.method == "GET":
+        return render_template("index.html")
+    
+    if request.method == "POST":
+        report = request.form.get("report")
+        if not report:
+            return "No data", 200
 
-    # Store the reported data to a file on the corresponding path
-    # already provided in settings.py module
-    # TODO
-    # create a new file 
-    f = open(settings.FEEDBACK_FILEPATH + "model_" + report["filename"] + ".txt", "a")
-    f.write(json.dumps(report))
-    f.close()
+        # Store the reported data to a file on the corresponding path
+        # already provided in settings.py module
+        # TODO
+        # create a new file 
+        with open(settings.FEEDBACK_FILEPATH, "a") as csv_file:
+            csv_file.write(report + "\n")
+        csv_file.close()
 
-    return render_template("index.html")
+        return render_template("index.html")

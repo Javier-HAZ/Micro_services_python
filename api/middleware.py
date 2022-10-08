@@ -1,5 +1,6 @@
 from ipaddress import ip_address
 import json
+from lib2to3.pytree import _Results
 import time
 from uuid import uuid4
 
@@ -27,8 +28,8 @@ def model_predict(image_name):
         Model predicted class as a string and the corresponding confidence
         score as a number.
     """
-    prediction = None
-    score = None
+    # prediction = None
+    # score = None
 
     # Assign an unique ID for this job and add it to the queue.
     # We need to assing this ID because we must be able to keep track
@@ -48,17 +49,26 @@ def model_predict(image_name):
     # Send the job to the model service using Redis
     # Hint: Using Redis `lpush()` function should be enough to accomplish this.
     # TODO
+    res = db.lpush(settings.REDIS_QUEUE, json.dumps(job_data))
 
     # Loop until we received the response from our ML model
     while True:
         # Attempt to get model predictions using job_id
         # Hint: Investigate how can we get a value using a key from Redis
         # TODO
-        output = None
+        output = db.get(job_id)
 
         # Don't forget to delete the job from Redis after we get the results!
         # Then exit the loop
         # TODO
+        if output:
+            results = json.loads(output.decode("utf-8"))
+            prediction = results["prediction"]
+            score = results["score"]
+
+            db.delete(job_id)
+            break
+
 
         # Sleep some time waiting for model results
         time.sleep(settings.API_SLEEP)
